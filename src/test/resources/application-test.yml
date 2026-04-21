@@ -1,0 +1,17 @@
+spring:
+  # Testcontainers sets spring.datasource.url / username / password
+  # via @DynamicPropertySource in the integration test class.
+  # This profile exists to override any settings unsuitable for testing.
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop   # Fresh schema for every test run
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: false
+
+logging:
+  level:
+    com.example.booking: INFO
+    org.hibernate.SQL: INFO
