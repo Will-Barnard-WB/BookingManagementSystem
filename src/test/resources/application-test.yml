@@ -5,7 +5,8 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: create-drop   # Fresh schema for every test run
+      # Flyway creates the schema; Hibernate validates — no auto DDL in tests.
+      ddl-auto: none
     show-sql: true
     properties:
       hibernate:

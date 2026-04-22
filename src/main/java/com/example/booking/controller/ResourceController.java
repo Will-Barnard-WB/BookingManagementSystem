@@ -4,11 +4,14 @@ import com.example.booking.dto.CreateResourceRequest;
 import com.example.booking.dto.ResourceResponse;
 import com.example.booking.service.ResourceService;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -38,10 +41,12 @@ public class ResourceController {
         return ResponseEntity.ok(resourceService.getResource(id));
     }
 
-    /** GET /resources — list all resources */
+    /** GET /resources — list resources with pagination (?page=0&size=20&sort=createdAt,desc) */
     @GetMapping
-    public ResponseEntity<List<ResourceResponse>> getAllResources() {
-        return ResponseEntity.ok(resourceService.getAllResources());
+    public ResponseEntity<Page<ResourceResponse>> getAllResources(
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
+            Pageable pageable) {
+        return ResponseEntity.ok(resourceService.getAllResources(pageable));
     }
 
     /** PUT /resources/{id} — update resource details */

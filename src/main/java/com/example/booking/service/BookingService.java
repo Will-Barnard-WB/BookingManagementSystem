@@ -2,8 +2,9 @@ package com.example.booking.service;
 
 import com.example.booking.dto.BookingResponse;
 import com.example.booking.dto.CreateBookingRequest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -37,17 +38,23 @@ public interface BookingService {
     BookingResponse getBooking(UUID bookingId);
 
     /**
-     * Retrieve all bookings for a specific user, newest first.
+     * Retrieve bookings for a specific user, newest first, with pagination.
      */
-    List<BookingResponse> getUserBookings(UUID userId);
+    Page<BookingResponse> getUserBookings(UUID userId, Pageable pageable);
 
     /**
-     * Cancel an existing booking.
+     * Confirm a PENDING booking (PENDING → CONFIRMED).
      *
-     * Only PENDING or CONFIRMED bookings may be cancelled.
+     * @throws com.example.booking.exception.BookingNotFoundException        if not found
+     * @throws com.example.booking.exception.IllegalStateTransitionException if not PENDING
+     */
+    BookingResponse confirmBooking(UUID bookingId);
+
+    /**
+     * Cancel an existing booking (PENDING or CONFIRMED → CANCELLED).
      *
-     * @throws com.example.booking.exception.BookingNotFoundException if not found
-     * @throws com.example.booking.exception.InvalidBookingException  if already cancelled
+     * @throws com.example.booking.exception.BookingNotFoundException        if not found
+     * @throws com.example.booking.exception.IllegalStateTransitionException if already cancelled
      */
     BookingResponse cancelBooking(UUID bookingId);
 }

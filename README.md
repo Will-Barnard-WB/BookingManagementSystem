@@ -1,5 +1,7 @@
 # Booking & Reservation Management System
 
+[![CI](https://github.com/Will-Barnard-WB/BookingSystem/actions/workflows/ci.yml/badge.svg)](https://github.com/Will-Barnard-WB/BookingSystem/actions/workflows/ci.yml)
+
 A production-quality Spring Boot 3 monolithic backend service for managing room and resource bookings.
 
 Built to demonstrate clean REST API design, relational data modelling, transactional integrity, and concurrency safety.

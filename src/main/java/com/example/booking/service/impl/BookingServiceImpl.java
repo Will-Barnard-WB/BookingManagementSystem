@@ -4,23 +4,35 @@ import com.example.booking.domain.entity.Booking;
 import com.example.booking.domain.entity.Resource;
 import com.example.booking.domain.entity.User;
 import com.example.booking.domain.enums.BookingStatus;
+import com.example.booking.domain.event.BookingCancelledEvent;
+import com.example.booking.domain.event.BookingConfirmedEvent;
+import com.example.booking.domain.event.BookingCreatedEvent;
 import com.example.booking.dto.BookingResponse;
 import com.example.booking.dto.CreateBookingRequest;
 import com.example.booking.exception.BookingNotFoundException;
-import com.example.booking.exception.InvalidBookingException;
+import com.example.booking.exception.IllegalStateTransitionException;
 import com.example.booking.exception.ResourceUnavailableException;
 import com.example.booking.mapper.BookingMapper;
 import com.example.booking.repository.BookingRepository;
 import com.example.booking.repository.ResourceRepository;
 import com.example.booking.repository.UserRepository;
 import com.example.booking.service.BookingService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import org.slf4j.MDC;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Core booking service implementation.
@@ -51,15 +63,35 @@ public class BookingServiceImpl implements BookingService {
     private final UserRepository userRepository;
     private final ResourceRepository resourceRepository;
     private final BookingMapper bookingMapper;
+    private final ApplicationEventPublisher eventPublisher;
+    private final MeterRegistry meterRegistry;
+
+    private final Counter bookingsCreatedCounter;
+    private final Counter bookingsConflictsCounter;
+    private final Timer   bookingsCreateLatencyTimer;
 
     public BookingServiceImpl(BookingRepository bookingRepository,
                                UserRepository userRepository,
                                ResourceRepository resourceRepository,
-                               BookingMapper bookingMapper) {
+                               BookingMapper bookingMapper,
+                               ApplicationEventPublisher eventPublisher,
+                               MeterRegistry meterRegistry) {
         this.bookingRepository = bookingRepository;
-        this.userRepository = userRepository;
+        this.userRepository    = userRepository;
         this.resourceRepository = resourceRepository;
-        this.bookingMapper = bookingMapper;
+        this.bookingMapper     = bookingMapper;
+        this.eventPublisher    = eventPublisher;
+        this.meterRegistry     = meterRegistry;
+
+        this.bookingsCreatedCounter = Counter.builder("bookings.created")
+                .description("Bookings successfully created")
+                .register(meterRegistry);
+        this.bookingsConflictsCounter = Counter.builder("bookings.conflicts")
+                .description("Booking conflict responses (409)")
+                .register(meterRegistry);
+        this.bookingsCreateLatencyTimer = Timer.builder("bookings.create.latency")
+                .description("Latency of the createBooking operation")
+                .register(meterRegistry);
     }
 
     /**
@@ -74,26 +106,47 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional(isolation = Isolation.SERIALIZABLE)
     public BookingResponse createBooking(CreateBookingRequest request) {
+        MDC.put("userId",     request.getUserId().toString());
+        MDC.put("resourceId", request.getResourceId().toString());
+        Timer.Sample sample = Timer.start(meterRegistry);
+        try {
+            User user = userRepository.findById(request.getUserId())
+                    .orElseThrow(() -> new BookingNotFoundException(
+                            "User not found: " + request.getUserId()));
 
-        User user = userRepository.findById(request.getUserId())
-                .orElseThrow(() -> new BookingNotFoundException(
-                        "User not found: " + request.getUserId()));
+            Resource resource = resourceRepository.findById(request.getResourceId())
+                    .orElseThrow(() -> new BookingNotFoundException(
+                            "Resource not found: " + request.getResourceId()));
 
-        Resource resource = resourceRepository.findById(request.getResourceId())
-                .orElseThrow(() -> new BookingNotFoundException(
-                        "Resource not found: " + request.getResourceId()));
+            List<Booking> conflicts = bookingRepository.findOverlappingBookings(
+                    resource.getId(), request.getStartTime(), request.getEndTime());
+            if (!conflicts.isEmpty()) {
+                bookingsConflictsCounter.increment();
+                throw new ResourceUnavailableException(
+                        "Resource '" + resource.getName() + "' is already booked for the requested slot.");
+            }
 
-        // TODO: run overlap detection query and throw if slot is taken
-        List<Booking> conflicts = bookingRepository.findOverlappingBookings(
-                resource.getId(), request.getStartTime(), request.getEndTime());
-        if (!conflicts.isEmpty()) {
+            Booking booking = new Booking(user, resource, request.getStartTime(), request.getEndTime());
+            // saveAndFlush forces an immediate DB flush so that optimistic-lock
+            // failures surface here rather than at the proxy commit boundary.
+            Booking saved = bookingRepository.saveAndFlush(booking);
+
+            eventPublisher.publishEvent(new BookingCreatedEvent(
+                    saved.getId(), saved.getUser().getId(), saved.getResource().getId(),
+                    LocalDateTime.now(), saved.getStatus()));
+
+            bookingsCreatedCounter.increment();
+            return bookingMapper.toResponse(saved);
+
+        } catch (ObjectOptimisticLockingFailureException | CannotAcquireLockException e) {
+            bookingsConflictsCounter.increment();
             throw new ResourceUnavailableException(
-                    "Resource '" + resource.getName() + "' is already booked for the requested slot.");
+                    "Resource booking conflict due to concurrent access. Please retry.");
+        } finally {
+            sample.stop(bookingsCreateLatencyTimer);
+            MDC.remove("userId");
+            MDC.remove("resourceId");
         }
-
-        Booking booking = new Booking(user, resource, request.getStartTime(), request.getEndTime());
-        Booking saved = bookingRepository.save(booking);
-        return bookingMapper.toResponse(saved);
     }
 
     @Override
@@ -105,11 +158,27 @@ public class BookingServiceImpl implements BookingService {
     }
 
     @Override
-    public List<BookingResponse> getUserBookings(UUID userId) {
-        return bookingRepository.findByUserIdOrderByCreatedAtDesc(userId)
-                .stream()
-                .map(bookingMapper::toResponse)
-                .collect(Collectors.toList());
+    public Page<BookingResponse> getUserBookings(UUID userId, Pageable pageable) {
+        return bookingRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
+                .map(bookingMapper::toResponse);
+    }
+
+    @Override
+    @Transactional
+    public BookingResponse confirmBooking(UUID bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new BookingNotFoundException(
+                        "Booking not found: " + bookingId));
+
+        BookingStatus previous = booking.getStatus();
+        booking.confirm(); // throws IllegalStateTransitionException if not PENDING
+        Booking saved = bookingRepository.save(booking);
+
+        eventPublisher.publishEvent(new BookingConfirmedEvent(
+                saved.getId(), saved.getUser().getId(), saved.getResource().getId(),
+                LocalDateTime.now(), previous, saved.getStatus()));
+
+        return bookingMapper.toResponse(saved);
     }
 
     @Override
@@ -120,10 +189,17 @@ public class BookingServiceImpl implements BookingService {
                         "Booking not found: " + bookingId));
 
         if (booking.getStatus() == BookingStatus.CANCELLED) {
-            throw new InvalidBookingException("Booking is already cancelled");
+            throw new IllegalStateTransitionException("Booking is already cancelled.");
         }
 
+        BookingStatus previous = booking.getStatus();
         booking.cancel();
-        return bookingMapper.toResponse(bookingRepository.save(booking));
+        Booking saved = bookingRepository.save(booking);
+
+        eventPublisher.publishEvent(new BookingCancelledEvent(
+                saved.getId(), saved.getUser().getId(), saved.getResource().getId(),
+                LocalDateTime.now(), previous, saved.getStatus()));
+
+        return bookingMapper.toResponse(saved);
     }
 }

@@ -2,8 +2,9 @@ package com.example.booking.service;
 
 import com.example.booking.dto.CreateResourceRequest;
 import com.example.booking.dto.ResourceResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -15,7 +16,7 @@ public interface ResourceService {
 
     ResourceResponse getResource(UUID resourceId);
 
-    List<ResourceResponse> getAllResources();
+    Page<ResourceResponse> getAllResources(Pageable pageable);
 
     ResourceResponse updateResource(UUID resourceId, CreateResourceRequest request);
 

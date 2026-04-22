@@ -11,9 +11,10 @@ import com.example.booking.service.ResourceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -49,11 +50,8 @@ public class ResourceServiceImpl implements ResourceService {
     }
 
     @Override
-    public List<ResourceResponse> getAllResources() {
-        return resourceRepository.findAll()
-                .stream()
-                .map(resourceMapper::toResponse)
-                .collect(Collectors.toList());
+    public Page<ResourceResponse> getAllResources(Pageable pageable) {
+        return resourceRepository.findAll(pageable).map(resourceMapper::toResponse);
     }
 
     @Override

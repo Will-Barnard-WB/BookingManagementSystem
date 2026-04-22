@@ -4,11 +4,14 @@ import com.example.booking.dto.CreateUserRequest;
 import com.example.booking.dto.UserResponse;
 import com.example.booking.service.UserService;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -38,10 +41,12 @@ public class UserController {
         return ResponseEntity.ok(userService.getUser(id));
     }
 
-    /** GET /users — list all users */
+    /** GET /users — list users with pagination (?page=0&size=20&sort=createdAt,desc) */
     @GetMapping
-    public ResponseEntity<List<UserResponse>> getAllUsers() {
-        return ResponseEntity.ok(userService.getAllUsers());
+    public ResponseEntity<Page<UserResponse>> getAllUsers(
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
+            Pageable pageable) {
+        return ResponseEntity.ok(userService.getAllUsers(pageable));
     }
 
     /** PUT /users/{id} — update user details */

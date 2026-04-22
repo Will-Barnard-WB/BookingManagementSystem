@@ -4,11 +4,14 @@ import com.example.booking.dto.BookingResponse;
 import com.example.booking.dto.CreateBookingRequest;
 import com.example.booking.service.BookingService;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -54,19 +57,33 @@ public class BookingController {
     /**
      * GET /users/{userId}/bookings
      *
-     * List all bookings belonging to a specific user, newest first.
+     * List bookings for a user, newest first, with pagination.
+     * Accepts ?page=0&size=20&sort=createdAt,desc query parameters.
      */
     @GetMapping("/users/{userId}/bookings")
-    public ResponseEntity<List<BookingResponse>> getUserBookings(
-            @PathVariable UUID userId) {
-        return ResponseEntity.ok(bookingService.getUserBookings(userId));
+    public ResponseEntity<Page<BookingResponse>> getUserBookings(
+            @PathVariable UUID userId,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
+            Pageable pageable) {
+        return ResponseEntity.ok(bookingService.getUserBookings(userId, pageable));
+    }
+
+    /**
+     * POST /bookings/{id}/confirm
+     *
+     * Confirm a PENDING booking (PENDING → CONFIRMED).
+     * Returns 400 if the booking is not in PENDING status.
+     */
+    @PostMapping("/bookings/{id}/confirm")
+    public ResponseEntity<BookingResponse> confirmBooking(@PathVariable UUID id) {
+        return ResponseEntity.ok(bookingService.confirmBooking(id));
     }
 
     /**
      * POST /bookings/{id}/cancel
      *
-     * Cancel a booking. Idempotent in that cancelling an already-cancelled
-     * booking returns 400 rather than succeeding silently.
+     * Cancel a PENDING or CONFIRMED booking.
+     * Returns 400 if the booking is already CANCELLED.
      */
     @PostMapping("/bookings/{id}/cancel")
     public ResponseEntity<BookingResponse> cancelBooking(@PathVariable UUID id) {

@@ -2,6 +2,8 @@ package com.example.booking.repository;
 
 import com.example.booking.domain.entity.Booking;
 import com.example.booking.domain.enums.BookingStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,6 +20,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     Optional<Booking> findById(UUID id);
 
     List<Booking> findByUserIdOrderByCreatedAtDesc(UUID userId);
+
+    Page<Booking> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 
     List<Booking> findByResourceIdAndStatusNot(UUID resourceId, BookingStatus status);
 

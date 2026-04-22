@@ -2,8 +2,9 @@ package com.example.booking.service;
 
 import com.example.booking.dto.CreateUserRequest;
 import com.example.booking.dto.UserResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -15,7 +16,7 @@ public interface UserService {
 
     UserResponse getUser(UUID userId);
 
-    List<UserResponse> getAllUsers();
+    Page<UserResponse> getAllUsers(Pageable pageable);
 
     UserResponse updateUser(UUID userId, CreateUserRequest request);
 

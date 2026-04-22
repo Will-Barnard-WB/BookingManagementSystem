@@ -1,6 +1,7 @@
 package com.example.booking.domain.entity;
 
 import com.example.booking.domain.enums.BookingStatus;
+import com.example.booking.exception.IllegalStateTransitionException;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -49,6 +50,9 @@ public class Booking {
     @Column(nullable = false)
     private BookingStatus status;
 
+    @Version
+    private Long version;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -76,23 +80,33 @@ public class Booking {
 
     /**
      * Confirms a PENDING booking.
-     * TODO: add guard — only PENDING bookings may be confirmed.
+     * Only PENDING → CONFIRMED is allowed; any other transition throws.
      */
     public void confirm() {
+        if (this.status != BookingStatus.PENDING) {
+            throw new IllegalStateTransitionException(
+                    "Cannot confirm a booking with status: " + this.status
+                            + ". Only PENDING bookings may be confirmed.");
+        }
         this.status = BookingStatus.CONFIRMED;
     }
 
     /**
-     * Cancels the booking regardless of current status.
-     * TODO: add guard — CANCELLED bookings should not be re-cancelled.
+     * Cancels the booking. PENDING or CONFIRMED → CANCELLED is allowed.
+     * Re-cancelling an already-CANCELLED booking throws.
      */
     public void cancel() {
+        if (this.status == BookingStatus.CANCELLED) {
+            throw new IllegalStateTransitionException("Booking is already cancelled.");
+        }
         this.status = BookingStatus.CANCELLED;
     }
 
     // --- Getters ---
 
-    public UUID getId() { return id; }
+    public UUID getId()     { return id; }
+
+    public Long getVersion() { return version; }
 
     public User getUser() { return user; }
 
