@@ -10,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
@@ -54,6 +55,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalStateTransitionException.class)
     public ResponseEntity<ErrorResponse> handleIllegalTransition(IllegalStateTransitionException ex) {
         return buildResponse(HttpStatus.BAD_REQUEST, "ILLEGAL_STATE_TRANSITION", ex.getMessage());
+    }
+
+    /**
+     * 400 — request body is missing or cannot be parsed (e.g. malformed JSON,
+     * invalid datetime format like "011:00:00").
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableMessage(HttpMessageNotReadableException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                "Request body is malformed or contains an invalid value");
     }
 
     /**

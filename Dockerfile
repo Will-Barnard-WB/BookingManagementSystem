@@ -21,12 +21,12 @@ RUN mvn package -DskipTests -q
 # Stage 2: Runtime
 # Slim JRE image — no build tools shipped to production.
 # ─────────────────────────────────────────────────────────────
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre-jammy
 
 WORKDIR /app
 
 # Non-root user for security hardening
-RUN addgroup -S booking && adduser -S booking -G booking
+RUN groupadd -r booking && useradd -r -g booking booking
 USER booking
 
 COPY --from=builder /app/target/booking-*.jar app.jar
