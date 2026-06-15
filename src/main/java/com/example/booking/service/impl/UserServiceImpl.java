@@ -1,11 +1,13 @@
 package com.example.booking.service.impl;
 
 import com.example.booking.domain.entity.User;
+import com.example.booking.domain.enums.BookingStatus;
 import com.example.booking.dto.CreateUserRequest;
 import com.example.booking.dto.UserResponse;
 import com.example.booking.exception.BookingNotFoundException;
 import com.example.booking.exception.InvalidBookingException;
 import com.example.booking.mapper.UserMapper;
+import com.example.booking.repository.BookingRepository;
 import com.example.booking.repository.UserRepository;
 import com.example.booking.service.UserService;
 import org.springframework.stereotype.Service;
@@ -21,10 +23,14 @@ import java.util.UUID;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final BookingRepository bookingRepository;
     private final UserMapper userMapper;
 
-    public UserServiceImpl(UserRepository userRepository, UserMapper userMapper) {
+    public UserServiceImpl(UserRepository userRepository,
+                           BookingRepository bookingRepository,
+                           UserMapper userMapper) {
         this.userRepository = userRepository;
+        this.bookingRepository = bookingRepository;
         this.userMapper = userMapper;
     }
 
@@ -56,7 +62,13 @@ public class UserServiceImpl implements UserService {
     public UserResponse updateUser(UUID userId, CreateUserRequest request) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BookingNotFoundException("User not found: " + userId));
-        // TODO: check that the new email is not taken by a different user
+        // Allow keeping the same email, but reject one already registered to someone else.
+        userRepository.findByEmail(request.getEmail())
+                .filter(existing -> !existing.getId().equals(userId))
+                .ifPresent(existing -> {
+                    throw new InvalidBookingException(
+                            "Email already registered: " + request.getEmail());
+                });
         user.setName(request.getName());
         user.setEmail(request.getEmail());
         return userMapper.toResponse(userRepository.save(user));
@@ -68,7 +80,15 @@ public class UserServiceImpl implements UserService {
         if (!userRepository.existsById(userId)) {
             throw new BookingNotFoundException("User not found: " + userId);
         }
-        // TODO: decide whether to cascade-cancel active bookings or block deletion
+        // Block deletion while the user still has bookings that aren't cancelled.
+        // Callers must cancel those bookings first; we never silently drop them.
+        boolean hasActiveBookings = bookingRepository
+                .findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .anyMatch(booking -> booking.getStatus() != BookingStatus.CANCELLED);
+        if (hasActiveBookings) {
+            throw new InvalidBookingException(
+                    "Cannot delete user with active bookings: " + userId);
+        }
         userRepository.deleteById(userId);
     }
 }

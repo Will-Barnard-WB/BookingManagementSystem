@@ -45,15 +45,14 @@ import java.util.UUID;
  *
  * CONCURRENCY CONTROL
  * ───────────────────
- * Two concurrent requests for the same resource/slot both pass the overlap check
- * if they both read before either writes (a classic TOCTOU race). Using
- * SERIALIZABLE isolation causes the database to detect the conflict and roll back
- * one of the transactions, which the service layer retries or surfaces as an error.
+ * Two concurrent requests for the same resource/slot can both pass the overlap
+ * check if they both read before either writes (a classic TOCTOU race). We run
+ * createBooking() under SERIALIZABLE isolation so the database detects the
+ * conflict and rolls back one transaction; the service catches that failure and
+ * surfaces it as a 409 (ResourceUnavailableException).
  *
- * Alternative approaches (choose one):
- *   1. SERIALIZABLE isolation (implemented here as a scaffold)
- *   2. SELECT ... FOR UPDATE to pessimistically lock matching rows
- *   3. A partial unique index on (resource_id, status) where status != 'CANCELLED'
+ * Two other approaches would also work: a SELECT ... FOR UPDATE pessimistic lock,
+ * or a partial unique index on (resource_id, status) where status != 'CANCELLED'.
  */
 @Service
 @Transactional(readOnly = true)

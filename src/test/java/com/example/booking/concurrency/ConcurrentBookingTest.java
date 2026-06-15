@@ -42,8 +42,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Verifies that SERIALIZABLE isolation + optimistic locking ensure exactly one
  * booking is created, with no double-booking possible regardless of timing.
  *
- * Also verifies that the transactional audit log (Phase 5) records exactly
- * one creation row — not one row per thread.
+ * Also verifies that the transactional audit log records exactly one creation
+ * row, not one row per thread.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers

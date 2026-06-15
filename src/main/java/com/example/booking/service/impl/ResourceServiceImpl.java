@@ -1,11 +1,13 @@
 package com.example.booking.service.impl;
 
 import com.example.booking.domain.entity.Resource;
+import com.example.booking.domain.enums.BookingStatus;
 import com.example.booking.dto.CreateResourceRequest;
 import com.example.booking.dto.ResourceResponse;
 import com.example.booking.exception.BookingNotFoundException;
 import com.example.booking.exception.InvalidBookingException;
 import com.example.booking.mapper.ResourceMapper;
+import com.example.booking.repository.BookingRepository;
 import com.example.booking.repository.ResourceRepository;
 import com.example.booking.service.ResourceService;
 import org.springframework.stereotype.Service;
@@ -21,11 +23,14 @@ import java.util.UUID;
 public class ResourceServiceImpl implements ResourceService {
 
     private final ResourceRepository resourceRepository;
+    private final BookingRepository bookingRepository;
     private final ResourceMapper resourceMapper;
 
     public ResourceServiceImpl(ResourceRepository resourceRepository,
+                                BookingRepository bookingRepository,
                                 ResourceMapper resourceMapper) {
         this.resourceRepository = resourceRepository;
+        this.bookingRepository = bookingRepository;
         this.resourceMapper = resourceMapper;
     }
 
@@ -60,7 +65,12 @@ public class ResourceServiceImpl implements ResourceService {
         Resource resource = resourceRepository.findById(resourceId)
                 .orElseThrow(() -> new BookingNotFoundException(
                         "Resource not found: " + resourceId));
-        // TODO: check name uniqueness if name is being changed
+        // Only reject the new name if it actually changed and clashes with another resource.
+        if (!resource.getName().equals(request.getName())
+                && resourceRepository.existsByName(request.getName())) {
+            throw new InvalidBookingException(
+                    "Resource name already exists: " + request.getName());
+        }
         resource.setName(request.getName());
         resource.setDescription(request.getDescription());
         resource.setCapacity(request.getCapacity());
@@ -73,7 +83,15 @@ public class ResourceServiceImpl implements ResourceService {
         if (!resourceRepository.existsById(resourceId)) {
             throw new BookingNotFoundException("Resource not found: " + resourceId);
         }
-        // TODO: check for active bookings on this resource before deleting
+        // Block deletion while the resource still has bookings that aren't cancelled,
+        // otherwise those bookings would point at a resource that no longer exists.
+        boolean hasActiveBookings = !bookingRepository
+                .findByResourceIdAndStatusNot(resourceId, BookingStatus.CANCELLED)
+                .isEmpty();
+        if (hasActiveBookings) {
+            throw new InvalidBookingException(
+                    "Cannot delete resource with active bookings: " + resourceId);
+        }
         resourceRepository.deleteById(resourceId);
     }
 }

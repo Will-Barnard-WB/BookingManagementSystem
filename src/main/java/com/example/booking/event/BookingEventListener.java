@@ -19,8 +19,9 @@ import org.springframework.transaction.event.TransactionalEventListener;
  *   the audit row rolls back too (transactional outbox pattern).
  *
  * NOTIFICATION listeners (AFTER_COMMIT):
- *   Run after successful commit — simulated here with SLF4J log statements
- *   (would be replaced with actual email/push notifications in production).
+ *   Run only once the booking has committed, so we never notify about a booking
+ *   that later rolled back. They currently write a log line; an email or push
+ *   integration would hook in at the same point.
  */
 @Component
 public class BookingEventListener {

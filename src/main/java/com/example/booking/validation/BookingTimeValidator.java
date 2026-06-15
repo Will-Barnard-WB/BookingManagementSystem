@@ -4,27 +4,24 @@ import com.example.booking.dto.CreateBookingRequest;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
+import java.time.Duration;
+
 /**
  * Validator for the @ValidBookingTime annotation.
  *
- * Rules:
- *   1. startTime must not be null AND endTime must not be null
- *      (null checks are delegated to @NotNull on the fields — if either is
- *       null here we skip cross-field validation to avoid a NullPointerException)
+ * It enforces the cross-field rules that single-field annotations can't express:
+ *   1. startTime must be before endTime, so every booking has a positive duration.
+ *   2. The booking must last at least 15 minutes and at most 8 hours.
  *
- *   2. startTime must be strictly before endTime
- *      Ensures a booking always has a positive duration.
- *
- *   3. No past bookings
- *      Each field is already annotated @Future — if validation reaches this
- *      validator both times are in the future. This rule is recorded here as
- *      a comment so the intent is explicit in the codebase.
- *
- * TODO: Extend this validator to enforce a minimum booking duration
- *       (e.g. at least 15 minutes) and a maximum duration (e.g. 8 hours).
+ * Null start/end values are left to @NotNull on the fields; whether the times are
+ * in the future is left to @Future. If either time is null we skip these checks to
+ * avoid a NullPointerException and let the field-level annotations report the error.
  */
 public class BookingTimeValidator
         implements ConstraintValidator<ValidBookingTime, CreateBookingRequest> {
+
+    private static final Duration MIN_DURATION = Duration.ofMinutes(15);
+    private static final Duration MAX_DURATION = Duration.ofHours(8);
 
     @Override
     public void initialize(ValidBookingTime annotation) {
@@ -35,23 +32,34 @@ public class BookingTimeValidator
     public boolean isValid(CreateBookingRequest request,
                            ConstraintValidatorContext context) {
 
-        // Rule 1: skip if either field is null — @NotNull on the fields handles that
+        // Let @NotNull on the fields report missing values.
         if (request.getStartTime() == null || request.getEndTime() == null) {
             return true;
         }
 
-        // Rule 2: startTime must be strictly before endTime
-        boolean valid = request.getStartTime().isBefore(request.getEndTime());
-
-        if (!valid) {
-            // Override the default annotation-level message with a field-specific one
-            context.disableDefaultConstraintViolation();
-            context.buildConstraintViolationWithTemplate(
-                            "startTime must be before endTime")
-                    .addPropertyNode("startTime")
-                    .addConstraintViolation();
+        if (!request.getStartTime().isBefore(request.getEndTime())) {
+            return reject(context, "startTime", "startTime must be before endTime");
         }
 
-        return valid;
+        Duration duration = Duration.between(request.getStartTime(), request.getEndTime());
+        if (duration.compareTo(MIN_DURATION) < 0) {
+            return reject(context, "endTime",
+                    "booking must be at least " + MIN_DURATION.toMinutes() + " minutes long");
+        }
+        if (duration.compareTo(MAX_DURATION) > 0) {
+            return reject(context, "endTime",
+                    "booking must not exceed " + MAX_DURATION.toHours() + " hours");
+        }
+
+        return true;
+    }
+
+    /** Replace the default message with a field-specific one and fail validation. */
+    private boolean reject(ConstraintValidatorContext context, String field, String message) {
+        context.disableDefaultConstraintViolation();
+        context.buildConstraintViolationWithTemplate(message)
+                .addPropertyNode(field)
+                .addConstraintViolation();
+        return false;
     }
 }
